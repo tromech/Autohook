@@ -84,7 +84,7 @@ main() {
             do
                 scriptname=$(basename $file)
                 debug "BEGIN $scriptname"
-                eval $file &> /dev/null
+                eval $file
                 script_exit_code=$?
                 if [[ $script_exit_code != 0 ]]
                 then
