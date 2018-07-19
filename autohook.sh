@@ -13,8 +13,7 @@ info() {
 }
 
 debug() {
-  if [[ $DEBUG == "true" ]]
-  then
+  if [[ $DEBUG == "true" ]]; then
     builtin echo "[Autohook DEBUG] $@";
   fi
 }
@@ -43,8 +42,7 @@ install() {
   repo_root=$(git rev-parse --show-toplevel)
   hooks_dir="$repo_root/.git/hooks"
   autohook_linktarget="../../$base_dirname/autohook.sh"
-  for hook_type in "${hook_types[@]}"
-  do
+  for hook_type in "${hook_types[@]}"; do
     hook_symlink="$hooks_dir/$hook_type"
     ln -s $autohook_linktarget $hook_symlink
   done
@@ -55,11 +53,9 @@ main() {
   calling_file=$(basename $0)
 
   base_dirname=.hooks
-  if [[ $calling_file == "autohook.sh" ]]
-  then
+  if [[ $calling_file == "autohook.sh" ]]; then
     command=$1
-    if [[ $command == "install" ]]
-    then
+    if [[ $command == "install" ]]; then
       install
     fi
   else
@@ -68,32 +64,26 @@ main() {
     symlinks_dir="$repo_root/$base_dirname/$hook_type"
     files=("$symlinks_dir"/*)
     number_of_symlinks="${#files[@]}"
-    if [[ $number_of_symlinks == 1 ]]
-    then
-      if [[ "$(basename ${files[0]})" == "*" ]]
-      then
+    if [[ $number_of_symlinks == 1 ]]; then
+      if [[ "$(basename ${files[0]})" == "*" ]]; then
         number_of_symlinks=0
       fi
     fi
     debug "Looking for $hook_type scripts to run...found $number_of_symlinks"
-    if [[ $number_of_symlinks -gt 0 ]]
-    then
+    if [[ $number_of_symlinks -gt 0 ]]; then
       hook_exit_code=0
       info "Running ${number_of_symlinks} $hook_type script(s)..."
-      for file in "${files[@]}"
-      do
+      for file in "${files[@]}"; do
         scriptname=$(basename $file)
         debug "BEGIN $scriptname"
         eval $file
         script_exit_code=$?
-        if [[ $script_exit_code != 0 ]]
-        then
+        if [[ $script_exit_code != 0 ]]; then
           hook_exit_code=$script_exit_code
         fi
         debug "FINISH $scriptname (exit code ${script_exit_code})"
       done
-      if [[ $hook_exit_code != 0 ]]
-      then
+      if [[ $hook_exit_code != 0 ]]; then
         info "A $hook_type script yielded negative exit code $hook_exit_code"
         exit $hook_exit_code
       fi
