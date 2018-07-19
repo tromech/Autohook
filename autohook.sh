@@ -8,10 +8,12 @@
 
 DEBUG=false
 
+warn() {
+  builtin echo "[Autohook WARN] $@";
+}
 info() {
   builtin echo "[Autohook INFO] $@";
 }
-
 debug() {
   if [[ $DEBUG == "true" ]]; then
     builtin echo "[Autohook DEBUG] $@";
@@ -75,13 +77,17 @@ main() {
       info "Running ${number_of_symlinks} $hook_type script(s)..."
       for file in "${files[@]}"; do
         scriptname=$(basename $file)
-        debug "BEGIN $scriptname"
-        eval $file
-        script_exit_code=$?
-        if [[ $script_exit_code != 0 ]]; then
-          hook_exit_code=$script_exit_code
+        if [[ -x "${file}" ]]; then
+          debug "BEGIN $scriptname"
+          eval $file
+          script_exit_code=$?
+          if [[ $script_exit_code != 0 ]]; then
+            hook_exit_code=$script_exit_code
+          fi
+          debug "FINISH $scriptname (exit code ${script_exit_code})"
+        else
+          warn "Skipping ${scriptname}, not executable"
         fi
-        debug "FINISH $scriptname (exit code ${script_exit_code})"
       done
       if [[ $hook_exit_code != 0 ]]; then
         info "A $hook_type script yielded negative exit code $hook_exit_code"
