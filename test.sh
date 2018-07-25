@@ -92,4 +92,23 @@ test_install_autohook() {
   purge_test_git_dir
 }
 
+do_commit() {
+  [[ $# -eq 2 ]] || fail "do_commit args: <dummy-filename-to-touch> <commit-message>"
+  touch "${REPO}/$1"
+  git add "$1"
+  git commit -am "$2"
+  return $?
+}
+
+test_plain_commit() {
+  setup_test_git_dir
+  autohook_install
+  git rev-parse --verify HEAD >/dev/null 2>&1 && fail "Expecting HEAD to be invalid ref at start"
+  do_commit "initial" "Initial commit"
+  git rev-parse --verify HEAD >/dev/null 2>&1 || fail "Expecting HEAD to be valid ref after first commit"
+  [[ $( git rev-list HEAD | wc -l ) == 1 ]] || fail "Expected one commit to exist after initial"
+  purge_test_git_dir
+}
+
 test install_autohook
+test plain_commit
