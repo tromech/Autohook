@@ -110,5 +110,38 @@ test_plain_commit() {
   purge_test_git_dir
 }
 
+test_pre_commit_hook_must_be_executable() {
+  setup_test_git_dir
+  autohook_install
+  do_commit "initial" "Initial commit"
+  [[ $( git rev-list HEAD | wc -l ) == 1 ]] || fail "Expected one commit to exist after initial"
+  mkdir "${REPO}/.hooks/pre-commit"
+  cat >"${REPO}/.hooks/pre-commit/no-no-never" <<EOF
+#!/bin/sh
+exit 1
+EOF
+  do_commit "dummy" "Just trying"
+  [[ $( git rev-list HEAD | wc -l ) == 2 ]] || fail "Expected pre-commit hook to be ignored, since not executable"
+  purge_test_git_dir
+}
+
+test_pre_commit_hook_rejects_commit() {
+  setup_test_git_dir
+  autohook_install
+  do_commit "initial" "Initial commit"
+  [[ $( git rev-list HEAD | wc -l ) == 1 ]] || fail "Expected one commit to exist after initial"
+  mkdir "${REPO}/.hooks/pre-commit"
+  cat >"${REPO}/.hooks/pre-commit/no-no-never" <<EOF
+#!/bin/sh
+exit 1
+EOF
+  chmod +x "${REPO}/.hooks/pre-commit/no-no-never"
+  do_commit "dummy" "Just trying"
+  [[ $( git rev-list HEAD | wc -l ) == 1 ]] || fail "Expected commit attempt to have failed, due to pre-commit hook"
+  purge_test_git_dir
+}
+
 test install_autohook
 test plain_commit
+test pre_commit_hook_must_be_executable
+test pre_commit_hook_rejects_commit
