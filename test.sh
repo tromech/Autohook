@@ -56,10 +56,17 @@ setup_test_git_dir() {
   cd "${REPO}"
   git init . &>/dev/null || fail "Failed to init git directory"
   cd - >/dev/null
+
+  # Makes git subcommands know the repo location
+  export GIT_WORK_TREE="${REPO}"
+  export GIT_DIR="${REPO}/.git"
 }
 
 purge_test_git_dir() {
   [[ -e "${REPO}" ]] && rm -rf "${REPO}"
+
+  unset GIT_WORK_TREE
+  unset GIT_DIR
 }
 
 autohook_install() {
