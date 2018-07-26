@@ -141,7 +141,33 @@ EOF
   purge_test_git_dir
 }
 
+test_commit_msg_hook_override() {
+  setup_test_git_dir
+  autohook_install
+  do_commit "initial" "Initial commit"
+  [[ $( git rev-list HEAD | wc -l ) == 1 ]] || fail "Expected one commit to exist after initial"
+  mkdir "${REPO}/.hooks/commit-msg"
+  cat >"${REPO}/.hooks/commit-msg/override" <<EOF
+#!/bin/sh
+MSGFILE="\$1"
+if [ ! -f "\$MSGFILE" ]; then
+  echo "Error: can't find message file \$MSGFILE"
+  exit 1
+fi
+echo "Nope -> I'll tell you what a subject line is" > "\$MSGFILE"
+EOF
+echo $?
+#  cat "${REPO}/.hooks/commit-msg/override"
+  chmod +x "${REPO}/.hooks/commit-msg/override"
+  do_commit "dummy" "Whatever" || fail "Unexpected failure of commit"
+  [[ $( git rev-list HEAD | wc -l ) == 2 ]] || fail "Expected two commits to exist after another commit"
+  COMMIT_MSG=$(git show -s --format="%s" HEAD)
+  [[ "$COMMIT_MSG" == "Nope -> I'll tell you what a subject line is" ]] || fail "Expected full commit msg override, but found: '${COMMIT_MSG}'"
+  purge_test_git_dir
+}
+
 test install_autohook
 test plain_commit
 test pre_commit_hook_must_be_executable
 test pre_commit_hook_rejects_commit
+test commit_msg_hook_override
