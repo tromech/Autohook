@@ -6,8 +6,36 @@
 # Version:  2.1.1
 # Website:  https://github.com/nkantar/Autohook
 
+set -u
+
+HOOKS_DIRNAME=.hooks
+AUTOHOOK_SCRIPTNAME=autohook.sh
+
 DEBUG=false
 
+HOOK_TYPES=(
+  "applypatch-msg"
+  "commit-msg"
+  "post-applypatch"
+  "post-checkout"
+  "post-commit"
+  "post-merge"
+  "post-receive"
+  "post-rewrite"
+  "post-update"
+  "pre-applypatch"
+  "pre-auto-gc"
+  "pre-commit"
+  "pre-push"
+  "pre-rebase"
+  "pre-receive"
+  "prepare-commit-msg"
+  "update"
+)
+
+error() {
+  builtin echo "[Autohook ERROR] $@";
+}
 warn() {
   builtin echo "[Autohook WARN] $@";
 }
@@ -20,82 +48,96 @@ debug() {
   fi
 }
 
-install() {
-  hook_types=(
-    "applypatch-msg"
-    "commit-msg"
-    "post-applypatch"
-    "post-checkout"
-    "post-commit"
-    "post-merge"
-    "post-receive"
-    "post-rewrite"
-    "post-update"
-    "pre-applypatch"
-    "pre-auto-gc"
-    "pre-commit"
-    "pre-push"
-    "pre-rebase"
-    "pre-receive"
-    "prepare-commit-msg"
-    "update"
-  )
-
-  repo_root=$(git rev-parse --show-toplevel)
-  hooks_dir="$repo_root/.git/hooks"
-  autohook_linktarget="../../$base_dirname/autohook.sh"
-  for hook_type in "${hook_types[@]}"; do
-    hook_symlink="$hooks_dir/$hook_type"
-    ln -s $autohook_linktarget $hook_symlink
+called_as_hook() {
+  CALLED_NAME="${1}"
+  for HOOK_TYPE in "${HOOK_TYPES[@]}"; do
+    if [[ "$CALLED_NAME" == "$HOOK_TYPE" ]]; then
+      return 0
+    fi
   done
+  return 1
 }
 
-
 main() {
-  calling_file=$(basename $0)
+  CALLED_NAME=$(basename $0)
 
-  base_dirname=.hooks
-  if [[ $calling_file == "autohook.sh" ]]; then
-    command=$1
-    if [[ $command == "install" ]]; then
-      install
-    fi
+  if called_as_hook "${CALLED_NAME}" ; then
+    run_hooks "${CALLED_NAME}"
   else
-    repo_root=$(git rev-parse --show-toplevel)
-    hook_type=$calling_file
-    symlinks_dir="$repo_root/$base_dirname/$hook_type"
-    files=("$symlinks_dir"/*)
-    number_of_symlinks="${#files[@]}"
-    if [[ $number_of_symlinks == 1 ]]; then
-      if [[ "$(basename ${files[0]})" == "*" ]]; then
-        number_of_symlinks=0
-      fi
+    # Script got called directly (usually, for installing autohook)
+    SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+    cd "${SCRIPT_DIR}"
+
+    if [[ "$(git rev-parse --is-inside-work-tree 2>/dev/null)" != "true" ]]; then
+      error "script doesn't seem to be in a git work-tree, aborting"
+      exit 1
     fi
-    debug "Looking for $hook_type scripts to run...found $number_of_symlinks"
-    if [[ $number_of_symlinks -gt 0 ]]; then
-      hook_exit_code=0
-      info "Running ${number_of_symlinks} $hook_type script(s)..."
-      for file in "${files[@]}"; do
-        scriptname=$(basename $file)
-        if [[ -x "${file}" ]]; then
-          debug "BEGIN $scriptname"
-          eval $file
-          script_exit_code=$?
-          if [[ $script_exit_code != 0 ]]; then
-            hook_exit_code=$script_exit_code
-          fi
-          debug "FINISH $scriptname (exit code ${script_exit_code})"
-        else
-          warn "Skipping ${scriptname}, not executable"
-        fi
-      done
-      if [[ $hook_exit_code != 0 ]]; then
-        info "A $hook_type script yielded negative exit code $hook_exit_code"
-        exit $hook_exit_code
+    GIT_ROOT=$(git rev-parse --show-toplevel)
+    if [[ "${GIT_ROOT}/${HOOKS_DIRNAME}" != "${SCRIPT_DIR}" ]]; then
+      error "expecting to be placed in '${HOOKS_DIRNAME}'-subdir of git work-tree, aborting. Found ourselves at: ${SCRIPT_DIR}"
+      exit 1
+    fi
+    cd "${GIT_ROOT}"
+    if [[ "${CALLED_NAME}" == "${AUTOHOOK_SCRIPTNAME}" ]]; then
+      if [[ $# -ge 1 && "${1}" == "install" ]]; then
+        install
+      else
+        error "To install autohook, call with arg: 'install'"
+        exit 1
       fi
     fi
   fi
 }
 
+run_hooks() {
+  local HOOK_TYPE="${1}"
+
+  GIT_ROOT=$(git rev-parse --show-toplevel)
+  SYMLINKS_DIR="${GIT_ROOT}/${HOOKS_DIRNAME}/${HOOK_TYPE}"
+  FILES=("$SYMLINKS_DIR"/*)
+  FILES_COUNT="${#FILES[@]}"
+  if [[ $FILES_COUNT == 1 ]]; then
+    if [[ "$(basename ${FILES[0]})" == "*" ]]; then
+      FILES_COUNT=0
+    fi
+  fi
+  debug "Found ${FILES_COUNT} symlinks as ${HOOK_TYPE}"
+
+  if [[ $FILES_COUNT -gt 0 ]]; then
+    HOOK_EXITCODE=0
+    info "Running ${FILES_COUNT} $HOOK_TYPE script(s)..."
+    for FILE in "${FILES[@]}"; do
+      SCRIPT_NAME=$(basename $FILE)
+      if [[ -x "${FILE}" ]]; then
+        debug "BEGIN $SCRIPT_NAME"
+        eval $FILE
+        SCRIPT_EXITCODE=$?
+        if [[ $SCRIPT_EXITCODE != 0 ]]; then
+          HOOK_EXITCODE=$SCRIPT_EXITCODE
+        fi
+        debug "FINISH $SCRIPT_NAME (exit code ${SCRIPT_EXITCODE})"
+      else
+        warn "Skipping ${SCRIPT_NAME}, not executable"
+      fi
+    done
+    if [[ $HOOK_EXITCODE != 0 ]]; then
+      info "A $HOOK_TYPE script yielded negative exit code $HOOK_EXITCODE"
+      exit $HOOK_EXITCODE
+    fi
+  fi
+}
+
+install() {
+  GIT_HOOKS_DIR=".git/hooks"
+  if [[ ! -d "${GIT_HOOKS_DIR}" ]]; then
+    error "Cannot find hooks-dir of git at ${GIT_HOOKS_DIR}, aborting"
+    exit 1
+  fi
+  AUTOHOOK_LINKTARGET="../../${HOOKS_DIRNAME}/${AUTOHOOK_SCRIPTNAME}"
+  for HOOK_TYPE in "${HOOK_TYPES[@]}"; do
+    HOOK_SYMLINK="${GIT_HOOKS_DIR}/${HOOK_TYPE}"
+    ln -s "$AUTOHOOK_LINKTARGET" "$HOOK_SYMLINK"
+  done
+}
 
 main "$@"
