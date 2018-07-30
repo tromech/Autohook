@@ -62,7 +62,8 @@ main() {
   CALLED_NAME=$(basename $0)
 
   if called_as_hook "${CALLED_NAME}" ; then
-    run_hooks "${CALLED_NAME}"
+    HOOK_TYPE="${CALLED_NAME}"
+    run_hooks "$@"
   else
     # Script got called directly (usually, for installing autohook)
     SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
@@ -90,8 +91,6 @@ main() {
 }
 
 run_hooks() {
-  local HOOK_TYPE="${1}"
-
   GIT_ROOT=$(git rev-parse --show-toplevel)
   SYMLINKS_DIR="${GIT_ROOT}/${HOOKS_DIRNAME}/${HOOK_TYPE}"
   FILES=("$SYMLINKS_DIR"/*)
@@ -103,6 +102,10 @@ run_hooks() {
   fi
   debug "Found ${FILES_COUNT} symlinks as ${HOOK_TYPE}"
 
+  # Should preserve e.g. trailing newline this way
+  STDIN=$(cat && echo end)
+  STDIN=${STDIN%end}
+
   if [[ $FILES_COUNT -gt 0 ]]; then
     HOOK_EXITCODE=0
     info "Running ${FILES_COUNT} $HOOK_TYPE script(s)..."
@@ -110,7 +113,7 @@ run_hooks() {
       SCRIPT_NAME=$(basename $FILE)
       if [[ -x "${FILE}" ]]; then
         debug "BEGIN $SCRIPT_NAME"
-        eval $FILE
+        printf %s "${STDIN}" | "${FILE}" "$@"
         SCRIPT_EXITCODE=$?
         if [[ $SCRIPT_EXITCODE != 0 ]]; then
           HOOK_EXITCODE=$SCRIPT_EXITCODE
