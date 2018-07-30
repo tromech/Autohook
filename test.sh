@@ -180,6 +180,32 @@ EOF
   purge_test_git_dir
 }
 
+test_multiple_pre_commits_hooks_order() {
+  setup_test_git_dir
+  autohook_install
+  do_commit "initial" "Initial commit"
+  [[ $( git rev-list HEAD | wc -l ) == 1 ]] || fail "Expected one commit to exist after initial"
+  mkdir "${REPO}/.hooks/pre-commit"
+  cat >"${REPO}/.hooks/pre-commit/01-first" <<EOF
+#!/bin/sh
+echo -n 1 >> "${REPO}/tmp-hooks-output"
+EOF
+  cat >"${REPO}/.hooks/pre-commit/02-second" <<EOF
+#!/bin/sh
+echo -n 2 >> "${REPO}/tmp-hooks-output"
+EOF
+  cat >"${REPO}/.hooks/pre-commit/03-third" <<EOF
+#!/bin/sh
+echo -n 3 >> "${REPO}/tmp-hooks-output"
+EOF
+  chmod +x "${REPO}"/.hooks/pre-commit/*
+  do_commit "dummy" "Something"
+  [[ $( git rev-list HEAD | wc -l ) == 2 ]] || fail "Expected two commits after commit"
+  [[ -f "${REPO}/tmp-hooks-output" ]] || fail "Expected result file from hooks not found"
+  [[ "$( cat "${REPO}/tmp-hooks-output" )" == "123" ]] || fail "Expected result 123, from hooks in order"
+  purge_test_git_dir
+}
+
 test_commit_msg_hook_override() {
   setup_test_git_dir
   autohook_install
@@ -253,5 +279,6 @@ test install_autohook
 test plain_commit
 test pre_commit_hook_must_be_executable
 test pre_commit_hook_rejects_commit
+test multiple_pre_commits_hooks_order
 test commit_msg_hook_override
 test pre_push_hook_args_and_stdin
