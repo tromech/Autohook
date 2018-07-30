@@ -5,6 +5,9 @@ set -u
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 BASE="${SCRIPT_DIR}/tmp"
 REPO="${BASE}/test-repo"
+REPO2="${BASE}/test-repo2"
+
+SILENT_RUN=true
 
 mkdir -p "${BASE}"
 cd "${BASE}"
@@ -29,6 +32,18 @@ fail() {
   exit 1
 }
 
+assert_equal_or_fail() {
+  local CONTEXT="${1}"
+
+  local EXPECTED="${2}"
+  local ACTUAL="${3}"
+
+  if [[ "${EXPECTED}" != "${ACTUAL}" ]]; then
+    fail_msg "Comparison failure: ${CONTEXT}\n  Expected: '${EXPECTED}'\n    Actual: '${ACTUAL}'"
+    exit 1
+  fi
+}
+
 # Core test-function - Runs each test in a subprocess. Allows tests
 #      to exit on assertion failures without stopping the whole script
 # $1 - name of test to run (function "test_${1}" must exist)
@@ -39,7 +54,9 @@ test() {
     test_msg "Running testcase ${TEST_FUNCTION}..."
     TEST_OUTPUT=$( ${TEST_FUNCTION} 2>&1 )
     TEST_RESULT=$?
-    [[ -n "$TEST_OUTPUT" ]] && echo "$TEST_OUTPUT"
+    if [[ "${SILENT_RUN}" != "true" ]]; then
+      [[ -n "$TEST_OUTPUT" ]] && echo "$TEST_OUTPUT"
+    fi
     if [[ ${TEST_RESULT} -eq 0 ]]; then
       okay_msg "Testcase ${TEST_FUNCTION}: pass"
     else
@@ -67,6 +84,28 @@ purge_test_git_dir() {
 
   unset GIT_WORK_TREE
   unset GIT_DIR
+}
+
+setup_2nd_bare_git_dir() {
+  purge_2nd_bare_git_dir
+  mkdir -p "${REPO2}"
+
+  OLD_GIT_WORK_TREE="${GIT_WORK_TREE}"
+  OLD_GIT_DIR="${GIT_DIR}"
+
+  unset GIT_WORK_TREE
+  unset GIT_DIR
+
+  cd "${REPO2}"
+  git init --bare . &>/dev/null || fail "Failed to init 2nd (bare) git directory"
+  cd - >/dev/null
+
+  export GIT_WORK_TREE="${OLD_GIT_WORK_TREE}"
+  export GIT_DIR="${OLD_GIT_DIR}"
+}
+
+purge_2nd_bare_git_dir() {
+  [[ -e "${REPO2}" ]] && rm -rf "${REPO2}"
 }
 
 autohook_install() {
@@ -166,8 +205,53 @@ echo $?
   purge_test_git_dir
 }
 
+test_pre_push_hook_args_and_stdin() {
+  setup_test_git_dir
+  autohook_install
+  do_commit "initial" "Initial commit"
+  [[ $( git rev-list HEAD | wc -l ) == 1 ]] || fail "Expected one commit to exist after initial" 
+
+  setup_2nd_bare_git_dir
+  git remote add other "${REPO2}" || fail "Failed to add remote"
+  git push other master || fail "Failed pushing to remote"
+
+  mkdir "${REPO}/.hooks/pre-push"
+  cat >"${REPO}/.hooks/pre-push/sample" <<EOF
+#!/bin/sh
+mkdir -p "${REPO}/tmp/"
+echo -n "\$1" > "${REPO}/tmp/push-remote-name"
+echo -n "\$2" > "${REPO}/tmp/push-remote-url"
+cat > "${REPO}/tmp/push-stdin"
+exit 0
+EOF
+  chmod +x "${REPO}/.hooks/pre-push/sample"
+  do_commit "foo" "Something"
+  do_commit "bar" "Something else"
+  do_commit "baz" "And yet some more"
+  [[ $( git rev-list HEAD | wc -l ) == 4 ]] || fail "Expected 2nd commit to be created"
+
+  git push other master || fail "Failed pushing to remote"
+  [[ -f "${REPO}/tmp/push-remote-name" ]] || fail "Expected file from hook not found (name)"
+  [[ -f "${REPO}/tmp/push-remote-url" ]] || fail "Expected file from hook not found (url)"
+  [[ "$(cat ${REPO}/tmp/push-remote-name)" == "other" ]] || fail "Unexpected content of remote url: '$(cat ${REPO}/tmp/push-remote-name)'"
+  [[ "$(cat ${REPO}/tmp/push-remote-url)" == "${REPO2}" ]] || fail "Unexpected content of remote url: '$(cat ${REPO}/tmp/push-remote-url)'"
+
+  [[ -f "${REPO}/tmp/push-stdin" ]] || fail "Expected file from hook not found (stdin)"
+  [[ $( cat "${REPO}/tmp/push-stdin" | wc -l ) -eq 1 ]] || fail "Expected 1 result line from hook"
+  ACTUAL_PUSH_LINE=$(cat "${REPO}/tmp/push-stdin")
+
+  SHA_OLD=$(git show -s --format="%H" HEAD~3)
+  SHA_NEW=$(git show -s --format="%H" HEAD)
+  EXPECTED_PUSH_LINE="refs/heads/master ${SHA_NEW} refs/heads/master ${SHA_OLD}"
+
+  assert_equal_or_fail "check for stdin" "${EXPECTED_PUSH_LINE}" "${ACTUAL_PUSH_LINE}"
+  purge_2nd_bare_git_dir
+  purge_test_git_dir
+}
+
 test install_autohook
 test plain_commit
 test pre_commit_hook_must_be_executable
 test pre_commit_hook_rejects_commit
 test commit_msg_hook_override
+test pre_push_hook_args_and_stdin
