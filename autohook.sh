@@ -47,7 +47,7 @@ install() {
 main() {
     calling_file=$(basename $0)
 
-    base_dirname=hooks
+    base_dirname=.hooks
     if [[ $calling_file == "autohook.sh" ]]
     then
         command=$1
