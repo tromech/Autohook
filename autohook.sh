@@ -152,7 +152,15 @@ install() {
     if [[ -d "${HOOKS_DIRNAME}/${SCOPE}" ]]; then
       for HOOK_TYPE in "${HOOK_TYPES[@]}"; do
         HOOK_SYMLINK="${GIT_HOOKS_DIR}/${HOOK_TYPE}"
-        ln -s "$AUTOHOOK_LINKTARGET" "$HOOK_SYMLINK"
+        if [[ ! -e "${HOOK_SYMLINK}" ]]; then
+          info "Preparing hook for ${HOOK_TYPE}"
+          ln -s "$AUTOHOOK_LINKTARGET" "$HOOK_SYMLINK"
+        elif [[ -L "${HOOK_SYMLINK}" && "$(realpath "${HOOK_SYMLINK}")" == "$(realpath "${GIT_HOOKS_DIR}/${AUTOHOOK_LINKTARGET}")" ]]; then
+          info "Preparing hook for ${HOOK_TYPE} (refresh)"
+          ln -sf "$AUTOHOOK_LINKTARGET" "$HOOK_SYMLINK"
+        else
+          warn "Cannot set git-hook for ${HOOK_TYPE} (exists, not overriding)"
+        fi
       done
       echo "$SCOPE" > "${HOOKS_DIRNAME}/.installed-scope"
     else
