@@ -111,7 +111,8 @@ purge_2nd_bare_git_dir() {
 autohook_install() {
   mkdir "${REPO}/.hooks"
   cp "${REPO}/../../autohook.sh" "${REPO}/.hooks/" || fail "Can't copy autohook.sh"
-  "${REPO}/.hooks/autohook.sh" install || fail "autohook install failed"
+  mkdir "${REPO}/.hooks/scope"
+  "${REPO}/.hooks/autohook.sh" install scope || fail "autohook install failed"
 }
 
 test_install_autohook() {
@@ -154,8 +155,8 @@ test_pre_commit_hook_must_be_executable() {
   autohook_install
   do_commit "initial" "Initial commit"
   [[ $( git rev-list HEAD | wc -l ) == 1 ]] || fail "Expected one commit to exist after initial"
-  mkdir "${REPO}/.hooks/pre-commit"
-  cat >"${REPO}/.hooks/pre-commit/no-no-never" <<EOF
+  mkdir -p "${REPO}/.hooks/scope/pre-commit"
+  cat >"${REPO}/.hooks/pre-commit/scope/no-no-never" <<EOF
 #!/bin/sh
 exit 1
 EOF
@@ -169,12 +170,12 @@ test_pre_commit_hook_rejects_commit() {
   autohook_install
   do_commit "initial" "Initial commit"
   [[ $( git rev-list HEAD | wc -l ) == 1 ]] || fail "Expected one commit to exist after initial"
-  mkdir "${REPO}/.hooks/pre-commit"
-  cat >"${REPO}/.hooks/pre-commit/no-no-never" <<EOF
+  mkdir "${REPO}/.hooks/scope/pre-commit"
+  cat >"${REPO}/.hooks/scope/pre-commit/no-no-never" <<EOF
 #!/bin/sh
 exit 1
 EOF
-  chmod +x "${REPO}/.hooks/pre-commit/no-no-never"
+  chmod +x "${REPO}/.hooks/scope/pre-commit/no-no-never"
   do_commit "dummy" "Just trying"
   [[ $( git rev-list HEAD | wc -l ) == 1 ]] || fail "Expected commit attempt to have failed, due to pre-commit hook"
   purge_test_git_dir
@@ -185,20 +186,20 @@ test_multiple_pre_commits_hooks_order() {
   autohook_install
   do_commit "initial" "Initial commit"
   [[ $( git rev-list HEAD | wc -l ) == 1 ]] || fail "Expected one commit to exist after initial"
-  mkdir "${REPO}/.hooks/pre-commit"
-  cat >"${REPO}/.hooks/pre-commit/01-first" <<EOF
+  mkdir "${REPO}/.hooks/scope/pre-commit"
+  cat >"${REPO}/.hooks/scope/pre-commit/01-first" <<EOF
 #!/bin/sh
 echo -n 1 >> "${REPO}/tmp-hooks-output"
 EOF
-  cat >"${REPO}/.hooks/pre-commit/02-second" <<EOF
+  cat >"${REPO}/.hooks/scope/pre-commit/02-second" <<EOF
 #!/bin/sh
 echo -n 2 >> "${REPO}/tmp-hooks-output"
 EOF
-  cat >"${REPO}/.hooks/pre-commit/03-third" <<EOF
+  cat >"${REPO}/.hooks/scope/pre-commit/03-third" <<EOF
 #!/bin/sh
 echo -n 3 >> "${REPO}/tmp-hooks-output"
 EOF
-  chmod +x "${REPO}"/.hooks/pre-commit/*
+  chmod +x "${REPO}"/.hooks/scope/pre-commit/*
   do_commit "dummy" "Something"
   [[ $( git rev-list HEAD | wc -l ) == 2 ]] || fail "Expected two commits after commit"
   [[ -f "${REPO}/tmp-hooks-output" ]] || fail "Expected result file from hooks not found"
@@ -211,8 +212,8 @@ test_commit_msg_hook_override() {
   autohook_install
   do_commit "initial" "Initial commit"
   [[ $( git rev-list HEAD | wc -l ) == 1 ]] || fail "Expected one commit to exist after initial"
-  mkdir "${REPO}/.hooks/commit-msg"
-  cat >"${REPO}/.hooks/commit-msg/override" <<EOF
+  mkdir "${REPO}/.hooks/scope/commit-msg"
+  cat >"${REPO}/.hooks/scope/commit-msg/override" <<EOF
 #!/bin/sh
 MSGFILE="\$1"
 if [ ! -f "\$MSGFILE" ]; then
@@ -222,8 +223,8 @@ fi
 echo "Nope -> I'll tell you what a subject line is" > "\$MSGFILE"
 EOF
 echo $?
-#  cat "${REPO}/.hooks/commit-msg/override"
-  chmod +x "${REPO}/.hooks/commit-msg/override"
+#  cat "${REPO}/.hooks/scope/commit-msg/override"
+  chmod +x "${REPO}/.hooks/scope/commit-msg/override"
   do_commit "dummy" "Whatever" || fail "Unexpected failure of commit"
   [[ $( git rev-list HEAD | wc -l ) == 2 ]] || fail "Expected two commits to exist after another commit"
   COMMIT_MSG=$(git show -s --format="%s" HEAD)
@@ -241,8 +242,8 @@ test_pre_push_hook_args_and_stdin() {
   git remote add other "${REPO2}" || fail "Failed to add remote"
   git push other master || fail "Failed pushing to remote"
 
-  mkdir "${REPO}/.hooks/pre-push"
-  cat >"${REPO}/.hooks/pre-push/sample" <<EOF
+  mkdir "${REPO}/.hooks/scope/pre-push"
+  cat >"${REPO}/.hooks/scope/pre-push/sample" <<EOF
 #!/bin/sh
 mkdir -p "${REPO}/tmp/"
 echo -n "\$1" > "${REPO}/tmp/push-remote-name"
@@ -250,7 +251,7 @@ echo -n "\$2" > "${REPO}/tmp/push-remote-url"
 cat > "${REPO}/tmp/push-stdin"
 exit 0
 EOF
-  chmod +x "${REPO}/.hooks/pre-push/sample"
+  chmod +x "${REPO}/.hooks/scope/pre-push/sample"
   do_commit "foo" "Something"
   do_commit "bar" "Something else"
   do_commit "baz" "And yet some more"

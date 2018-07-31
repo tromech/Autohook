@@ -80,10 +80,10 @@ main() {
     fi
     cd "${GIT_ROOT}"
     if [[ "${CALLED_NAME}" == "${AUTOHOOK_SCRIPTNAME}" ]]; then
-      if [[ $# -ge 1 && "${1}" == "install" ]]; then
-        install
+      if [[ $# -eq 2 && "${1}" == "install" ]]; then
+        install "${2}"
       else
-        error "To install autohook, call with arg: 'install'"
+        error "To install autohook, call with arg: 'install <scope>'"
         exit 1
       fi
     fi
@@ -92,7 +92,17 @@ main() {
 
 run_hooks() {
   GIT_ROOT=$(git rev-parse --show-toplevel)
-  SYMLINKS_DIR="${GIT_ROOT}/${HOOKS_DIRNAME}/${HOOK_TYPE}"
+  AUTOHOOKS_BASEDIR="${GIT_ROOT}/${HOOKS_DIRNAME}"
+  if [[ ! -f "${AUTOHOOKS_BASEDIR}/.installed-scope" ]]; then
+    error "Can't find autohook installed-scope, re-run install again first"
+    exit 1
+  fi
+  SCOPE=$(cat "${AUTOHOOKS_BASEDIR}/.installed-scope")
+  if [[ ! -d "${AUTOHOOKS_BASEDIR}/${SCOPE}" ]]; then
+    error "Can't find scope-dir of autohook at ${AUTOHOOKS_BASEDIR}/${SCOPE}, re-run install again first?"
+    exit 1
+  fi
+  SYMLINKS_DIR="${AUTOHOOKS_BASEDIR}/${SCOPE}/${HOOK_TYPE}"
   FILES=("$SYMLINKS_DIR"/*)
   FILES_COUNT="${#FILES[@]}"
   if [[ $FILES_COUNT == 1 ]]; then
@@ -137,10 +147,19 @@ install() {
     exit 1
   fi
   AUTOHOOK_LINKTARGET="../../${HOOKS_DIRNAME}/${AUTOHOOK_SCRIPTNAME}"
-  for HOOK_TYPE in "${HOOK_TYPES[@]}"; do
-    HOOK_SYMLINK="${GIT_HOOKS_DIR}/${HOOK_TYPE}"
-    ln -s "$AUTOHOOK_LINKTARGET" "$HOOK_SYMLINK"
-  done
+  if [[ $# -eq 1 ]]; then
+    SCOPE="$1"
+    if [[ -d "${HOOKS_DIRNAME}/${SCOPE}" ]]; then
+      for HOOK_TYPE in "${HOOK_TYPES[@]}"; do
+        HOOK_SYMLINK="${GIT_HOOKS_DIR}/${HOOK_TYPE}"
+        ln -s "$AUTOHOOK_LINKTARGET" "$HOOK_SYMLINK"
+      done
+      echo "$SCOPE" > "${HOOKS_DIRNAME}/.installed-scope"
+    else
+      error "Can't install with scope ${SCOPE}, can't find hooks base-dir ${HOOKS_DIRNAME}/${SCOPE}"
+      exit 1
+    fi
+  fi
 }
 
 main "$@"
