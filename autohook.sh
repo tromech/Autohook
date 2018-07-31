@@ -6,11 +6,18 @@
 # Version:  2.1.1
 # Website:  https://github.com/nkantar/Autohook
 
+DEBUG=false
 
-echo() {
-    builtin echo "[Autohook] $@";
+info() {
+    builtin echo "[Autohook INFO] $@";
 }
 
+debug() {
+    if [[ $DEBUG == "true" ]]
+    then
+        builtin echo "[Autohook DEBUG] $@";
+    fi
+}
 
 install() {
     hook_types=(
@@ -68,25 +75,26 @@ main() {
                 number_of_symlinks=0
             fi
         fi
-        echo "Looking for $hook_type scripts to run...found $number_of_symlinks!"
+        debug "Looking for $hook_type scripts to run...found $number_of_symlinks"
         if [[ $number_of_symlinks -gt 0 ]]
         then
             hook_exit_code=0
+            info "Running ${number_of_symlinks} $hook_type script(s)..."
             for file in "${files[@]}"
             do
                 scriptname=$(basename $file)
-                echo "BEGIN $scriptname"
+                debug "BEGIN $scriptname"
                 eval $file &> /dev/null
                 script_exit_code=$?
                 if [[ $script_exit_code != 0 ]]
                 then
                   hook_exit_code=$script_exit_code
                 fi
-                echo "FINISH $scriptname"
+                debug "FINISH $scriptname (exit code ${script_exit_code})"
             done
             if [[ $hook_exit_code != 0 ]]
             then
-              echo "A $hook_type script yielded negative exit code $hook_exit_code"
+              info "A $hook_type script yielded negative exit code $hook_exit_code"
               exit $hook_exit_code
             fi
         fi
